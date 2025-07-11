@@ -11,6 +11,12 @@ import { getConvexClient } from "@/lib/convex";
 import { tool } from "@langchain/core/tools";
 import MessageBubble from "./MessageBubble";
 import WelcomeMessage from "./WelcomeMessage";
+import { RagIcon } from "./RagIcon";
+import { Document } from "@langchain/core/documents";
+import {
+  addDocumentsToVectorStore,
+  getDocumentsForChat,
+} from "@/lib/vectorStore";
 
 interface ChatInterfaceProps {
   chatId: Id<"chats">;
@@ -26,8 +32,24 @@ function ChatInterface({ chatId, initialMessages }: ChatInterfaceProps) {
     name: string;
     input: unknown;
   } | null>(null);
+  const [uploadedDocuments, setUploadedDocuments] = useState<Document[]>([]);
+  const [documentsCount, setDocumentsCount] = useState(0);
 
   const messagesEndRef = useRef<HTMLDivElement>(null); // Ref to scroll to bottom
+
+  // Load existing documents for this chat
+  useEffect(() => {
+    const loadDocuments = async () => {
+      try {
+        const docs = await getDocumentsForChat(chatId.toString());
+        setDocumentsCount(docs.length);
+      } catch (error) {
+        console.error("Error loading documents:", error);
+      }
+    };
+
+    loadDocuments();
+  }, [chatId]);
 
   // Helper for formatting tool output // styling the output
   const formatToolOutput = (output: unknown): string => {
@@ -81,6 +103,26 @@ function ChatInterface({ chatId, initialMessages }: ChatInterfaceProps) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages, streamedResponse]);
+
+  const handleDocumentsProcessed = async (documents: Document[]) => {
+    try {
+      // Add documents to vector store
+      await addDocumentsToVectorStore(documents, chatId.toString());
+
+      // Update documents count
+      setDocumentsCount((prev) => prev + documents.length);
+
+      // Show success message
+      setStreamedResponse(
+        `Added ${documents.length} document chunks to the conversation context.`
+      );
+      setTimeout(() => setStreamedResponse(""), 3000);
+    } catch (error) {
+      console.error("Error processing documents:", error);
+      setStreamedResponse("Error processing documents. Please try again.");
+      setTimeout(() => setStreamedResponse(""), 3000);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -282,12 +324,16 @@ function ChatInterface({ chatId, initialMessages }: ChatInterfaceProps) {
           className="max-w-4xl mz-auto mx-auto relative"
         >
           <div className="relative flex items-center">
+            <RagIcon
+              onDocumentsProcessed={handleDocumentsProcessed}
+              documentsCount={documentsCount}
+            />
             <input
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="Message AI Agent..."
-              className="flex-1 py-3 px-4 rounded-2xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent pr-12 bg-gray-50 placeholder:text-gray-500"
+              className="flex-1 py-3 px-4 rounded-2xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent pr-12 bg-gray-50 placeholder:text-gray-500 ml-2"
               disabled={isLoading}
             />
             <Button

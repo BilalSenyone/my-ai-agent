@@ -12,6 +12,7 @@ import { HumanMessage, ToolMessage } from "@langchain/core/messages";
 import { AIMessage } from "node_modules/@langchain/core/dist/messages/ai";
 import { NextResponse } from "next/server";
 import { submitQuestion } from "@/lib/langgraph";
+import { enhanceMessagesWithRAG } from "@/lib/rag";
 
 // Helper function to send Server-Sent Events (SSE) messages
 // Encodes the message with required SSE format and writes to the stream
@@ -75,9 +76,21 @@ export async function POST(req: Request) {
           new HumanMessage(newMessage), // We append the new message to the end of the array
         ];
 
+        // Enhance messages with RAG context if available
+        const enhancedMessages = await enhanceMessagesWithRAG(
+          langchainMessages,
+          newMessage,
+          chatId
+        );
+
+        // Log if RAG enhancement was applied
+        if (enhancedMessages.length !== langchainMessages.length) {
+          console.log("Messages enhanced with RAG context");
+        }
+
         // create the stream
         try {
-          const eventStream = await submitQuestion(langchainMessages, chatId);
+          const eventStream = await submitQuestion(enhancedMessages, chatId);
           // handle the events
           for await (const event of eventStream) {
             // console.log("Event", event);
